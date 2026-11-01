@@ -48,25 +48,79 @@ def tendance(df):
     if last["sma_f"] < last["sma_s"]: return "BAISSE"
     return "NEUTRE"
 
-def check_cassure_sr(df, sup, res, sens):
-    derniere = df.iloc[-1]
-    precedente = df.iloc[-2]
-    if sens == "HAUSSE" and precedente["c"] <= res and derniere["c"] > res: return "ACHAT"
-    if sens == "BAISSE" and precedente["c"] >= sup and derniere["c"] < sup: return "VENTE"
+# --- VRAIE DÉTECTION DE ZONES (PIVOTS) ---
+def trouver_pivots(df, window=5):
+    pivots_hauts = []
+    pivots_bas = []
+    for i in range(window, len(df) - window):
+        # Pivot Haut : le plus haut local
+        if df["h"].iloc[i] == df["h"].iloc[i-window:i+window+1].max():
+            pivots_hauts.append(df["h"].iloc[i])
+        # Pivot Bas : le plus bas local
+        if df["l"].iloc[i] == df["l"].iloc[i-window:i+window+1].min():
+            pivots_bas.append(df["l"].iloc[i])
+    return pivots_hauts, pivots_bas
+
+def get_zones(df_h1):
+    hauts, bas = trouver_pivots(df_h1, window=3)
+    if not hauts or not bas:
+        return None, None
+    
+    # On regroupe les pivots proches (à 0.5% près) pour former une zone
+    def regrouper(pivots, tolerance=0.005):
+        if not pivots: return []
+        pivots = sorted(pivots)
+        zones = []
+        current_zone = [pivots[0]]
+        for p in pivots[1:]:
+            if (p - current_zone[-1]) / current_zone[-1] < tolerance:
+                current_zone.append(p)
+            else:
+                zones.append((min(current_zone), max(current_zone)))
+                current_zone = [p]
+        zones.append((min(current_zone), max(current_zone)))
+        return zones
+
+    zones_res = regrouper(hauts)
+    zones_sup = regrouper(bas)
+    
+    # La résistance la plus proche au-dessus du prix actuel
+    prix = df_h1["c"].iloc[-1]
+    res_proches = [z for z in zones_res if z[0] > prix]
+    res = min(res_proches, key=lambda z: z[0]) if res_proches else None
+    
+    # Le support le plus proche en-dessous du prix actuel
+    sup_proches = [z for z in zones_sup if z[1] < prix]
+    sup = max(sup_proches, key=lambda z: z[1]) if sup_proches else None
+    
+    return res, sup
+
+def check_cassure_zone(df, zone_sup, zone_res, sens):
+    if sens == "HAUSSE" and zone_res:
+        # La bougie précédente doit être sous la zone, et la dernière doit clôturer au-dessus du haut de la zone
+        if df["c"].iloc[-2] <= zone_res[1] and df["c"].iloc[-1] > zone_res[1]:
+            return "ACHAT"
+    if sens == "BAISSE" and zone_sup:
+        # La bougie précédente doit être au-dessus de la zone, et la dernière doit clôturer sous le bas de la zone
+        if df["c"].iloc[-2] >= zone_sup[0] and df["c"].iloc[-1] < zone_sup[0]:
+            return "VENTE"
     return None
 
-def figure(df, tend, sig, tf_label, sup, res):
+def figure(df, tend, sig, tf_label, zone_sup, zone_res):
     df = df.tail(50).reset_index(drop=True)
-    df["sma_f"] = df["c"].rolling(SMA_FAST).mean()
-    df["sma_s"] = df["c"].rolling(SMA_SLOW).mean()
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
     fig.patch.set_facecolor('#1e1e1e'); ax.set_facecolor('#1e1e1e')
     for i, r in df.iterrows():
         col = '#26a69a' if r['c'] >= r['o'] else '#ef5350'
         ax.plot([i, i], [r['l'], r['h']], color=col, lw=1.2)
         ax.add_patch(Rectangle((i-0.3, min(r['o'], r['c'])), 0.6, abs(r['o']-r['c']), facecolor=col, edgecolor=col))
-    if sup: ax.axhline(sup, color="lime", ls="--", lw=1.5, label="Support")
-    if res: ax.axhline(res, color="red", ls="--", lw=1.5, label="Résistance")
+    
+    # Tracé des zones (rectangles)
+    if zone_res:
+        ax.axhspan(zone_res[0], zone_res[1], color='red', alpha=0.2, label=f"Résistance ({zone_res[0]:.1f}-{zone_res[1]:.1f})")
+    if zone_sup:
+        ax.axhspan(zone_sup[0], zone_sup[1], color='lime', alpha=0.2, label=f"Support ({zone_sup[0]:.1f}-{zone_sup[1]:.1f})")
+        
     ax.set_title(f"R_75 - {tf_label} | {tend} | {sig or ''}", color="white")
     ax.tick_params(colors='white'); ax.grid(color='#333333', ls='--', alpha=0.5)
     ax.legend(loc="upper left", facecolor='#1e1e1e', labelcolor='white')
@@ -76,7 +130,7 @@ def figure(df, tend, sig, tf_label, sup, res):
 
 def main():
     now = datetime.now(BENIN)
-    log("DÉMARRAGE S/R")
+    log("DÉMARRAGE S/R (ZONES)")
     
     df_15 = fetch_deriv("R_75", "15m")
     df_30 = fetch_deriv("R_75", "30m")
@@ -88,59 +142,51 @@ def main():
     tend_m30 = tendance(df_30)
     aligne = (tend_h1 == tend_m30 and tend_h1 in ("HAUSSE", "BAISSE"))
     
-    res = df_60["h"].tail(50).max()
-    sup = df_60["l"].tail(50).min()
+    zone_res, zone_sup = get_zones(df_60)
     
     sig = None
     if aligne:
-        sig = check_cassure_sr(df_15, sup, res, tend_h1)
+        sig = check_cassure_zone(df_15, zone_sup, zone_res, tend_h1)
     
     log(f"R_75 analysé. H1:{tend_h1} M30:{tend_m30} Signal: {sig}")
+    if zone_res: log(f"Zone Résistance: {zone_res[0]:.2f} - {zone_res[1]:.2f}")
+    if zone_sup: log(f"Zone Support: {zone_sup[0]:.2f} - {zone_sup[1]:.2f}")
     
     prix = df_15["c"].iloc[-1]
     
-    # --- RAPPORT PÉDAGOGIQUE S/R ---
-    texte = f"📊 **RAPPORT S/R R_75** - {now.strftime('%a %d/%m %H:%M')}\n\n"
+    # --- RAPPORT PÉDAGOGIQUE ---
+    texte = f"📊 **RAPPORT ZONES S/R R_75** - {now.strftime('%a %d/%m %H:%M')}\n\n"
     texte += f"🔹 **TENDANCE DE FOND**\n"
-    texte += f"• H1 : {tend_h1}\n"
-    texte += f"• M30 : {tend_m30}\n"
-    texte += f"• Alignement : {'✅ OUI' if aligne else '❌ NON (Pas de trade contre la tendance)'}\n\n"
+    texte += f"• H1 : {tend_h1}\n• M30 : {tend_m30}\n"
+    texte += f"• Alignement : {'✅ OUI' if aligne else '❌ NON'}\n\n"
     
-    texte += f"📏 **ZONES CLÉS (H1)**\n"
-    texte += f"• Résistance : {res:.2f}\n"
-    texte += f"• Support : {sup:.2f}\n"
+    texte += f"📏 **ZONES DÉTECTÉES (H1)**\n"
+    texte += f"• Résistance : {f'{zone_res[0]:.2f} - {zone_res[1]:.2f}' if zone_res else 'Aucune'}\n"
+    texte += f"• Support : {f'{zone_sup[0]:.2f} - {zone_sup[1]:.2f}' if zone_sup else 'Aucun'}\n"
     texte += f"• Prix actuel : {prix:.2f}\n\n"
     
     texte += f"🎯 **SIGNAL DE CASSURE**\n"
     if sig:
         texte += f"• {sig} CONFIRMÉ ! 🚀\n"
-        texte += f"• La bougie M15 a clôturé {'au-dessus de la résistance' if sig == 'ACHAT' else 'en-dessous du support'}.\n"
-        texte += f"• Conseil : C'est un moment de cassure. Tu peux envisager une entrée.\n"
+        texte += f"• La bougie M15 a clôturé {'au-dessus de la zone de résistance' if sig == 'ACHAT' else 'en-dessous de la zone de support'}.\n"
+        texte += f"• Conseil : Cassure validée. Envisage une entrée avec Stop Loss de l'autre côté de la zone.\n"
     else:
         if not aligne:
-            texte += f"• Aucun signal. ⏳\n"
-            texte += f"• Raison : H1 et M30 ne sont pas alignés. Le bot attend une tendance claire.\n"
-            texte += f"• Conseil : Patiente, ne trade pas dans le bruit.\n"
+            texte += f"• Aucun signal. ⏳\n• Raison : H1 et M30 ne sont pas alignés.\n"
         else:
-            texte += f"• Aucun signal. ⏳\n"
-            texte += f"• Raison : Tendance alignée ({tend_h1}), mais aucune cassure confirmée sur M15.\n"
-            texte += f"• Conseil : Attends que le prix clôture {'au-dessus de ' + str(round(res, 2)) if tend_h1 == 'HAUSSE' else 'en-dessous de ' + str(round(sup, 2))} pour un signal.\n"
-            
-    texte += f"\n💡 **CONSEIL DU BOT**\n"
-    if sig:
-        texte += f"• Place ton Stop Loss {'sous le support' if sig == 'ACHAT' else 'au-dessus de la résistance'}.\n"
-        texte += f"• Vise un Take Profit de 2x ton risque.\n"
-    else:
-        texte += f"• Reste attentif, une cassure peut arriver à tout moment.\n"
+            texte += f"• Aucun signal. ⏳\n• Raison : Tendance alignée ({tend_h1}), mais aucune cassure de zone confirmée sur M15.\n"
+            if tend_h1 == "HAUSSE" and zone_res:
+                texte += f"• Conseil : Attends que le prix clôture au-dessus de {zone_res[1]:.2f} (haut de la résistance).\n"
+            elif tend_h1 == "BAISSE" and zone_sup:
+                texte += f"• Conseil : Attends que le prix clôture en-dessous de {zone_sup[0]:.2f} (bas du support).\n"
 
-    # --- ENVOI ---
     topic = CONFIG["topics"]["principal"]
     if CONFIG["mode_affichage"] == "RAPPORT" or sig:
         for tf, df, tend in [("H1", df_60, tend_h1), ("M30", df_30, tend_m30), ("M15", df_15, tend_h1)]:
-            img = figure(df, tend, sig if tf == "M15" else None, tf, sup, res)
+            img = figure(df, tend, sig if tf == "M15" else None, tf, zone_sup, zone_res)
             post_ntfy(topic, f"R_75 - {tf}", img, f"R_75 {tf}")
             time.sleep(1.5)
         
-        post_ntfy(topic, texte, None, "Rapport S/R R_75")
+        post_ntfy(topic, texte, None, "Rapport Zones S/R R_75")
 
 if __name__ == "__main__": main()
