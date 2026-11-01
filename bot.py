@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
 BENIN = pytz.timezone('Africa/Porto-Novo')
 CONFIG = json.load(open("config.json"))
@@ -48,74 +49,43 @@ def tendance(df):
     if last["sma_f"] < last["sma_s"]: return "BAISSE"
     return "NEUTRE"
 
-# --- DÉTECTION DE ZONES (SUR 20 BOUGIES H1) ---
-def trouver_pivots(df, window=3):
-    pivots_hauts = []
-    pivots_bas = []
-    for i in range(window, len(df) - window):
-        if df["h"].iloc[i] == df["h"].iloc[i-window:i+window+1].max():
-            pivots_hauts.append(df["h"].iloc[i])
-        if df["l"].iloc[i] == df["l"].iloc[i-window:i+window+1].min():
-            pivots_bas.append(df["l"].iloc[i])
-    return pivots_hauts, pivots_bas
-
+# --- DÉTECTION DES ZONES (20 DERNIÈRES BOUGIES) ---
 def get_zones(df_h1):
-    # On analyse UNIQUEMENT les 20 dernières bougies pour trouver les zones
     df_h1 = df_h1.tail(20).reset_index(drop=True)
     
-    hauts, bas = trouver_pivots(df_h1, window=2)
-    if not hauts or not bas:
-        return None, None
-    
-    def regrouper(pivots, tolerance=0.005):
-        if not pivots: return []
-        pivots = sorted(pivots)
-        zones = []
-        current_zone = [pivots[0]]
-        for p in pivots[1:]:
-            if (p - current_zone[-1]) / current_zone[-1] < tolerance:
-                current_zone.append(p)
-            else:
-                zones.append((min(current_zone), max(current_zone)))
-                current_zone = [p]
-        zones.append((min(current_zone), max(current_zone)))
-        return zones
-
-    zones_res = regrouper(hauts)
-    zones_sup = regrouper(bas)
-    
-    prix = df_h1["c"].iloc[-1]
-    
-    res_proches = [z for z in zones_res if z[0] > prix]
-    res = min(res_proches, key=lambda z: z[0]) if res_proches else None
-    
-    sup_proches = [z for z in zones_sup if z[1] < prix]
-    sup = max(sup_proches, key=lambda z: z[1]) if sup_proches else None
+    # On prend le plus haut et le plus bas des 20 dernières bougies
+    res = df_h1["h"].max()
+    sup = df_h1["l"].min()
     
     return res, sup
 
-def check_cassure_zone(df, zone_sup, zone_res, sens):
-    if sens == "HAUSSE" and zone_res:
-        if df["c"].iloc[-2] <= zone_res[1] and df["c"].iloc[-1] > zone_res[1]:
-            return "ACHAT"
-    if sens == "BAISSE" and zone_sup:
-        if df["c"].iloc[-2] >= zone_sup[0] and df["c"].iloc[-1] < zone_sup[0]:
-            return "VENTE"
+def check_cassure(df, res, sup, sens):
+    if sens == "HAUSSE":
+        if df["c"].iloc[-2] <= res and df["c"].iloc[-1] > res: return "ACHAT"
+    if sens == "BAISSE":
+        if df["c"].iloc[-2] >= sup and df["c"].iloc[-1] < sup: return "VENTE"
     return None
 
-def figure(df, tend, sig, tf_label, zone_sup, zone_res):
-    df = df.tail(50).reset_index(drop=True) # On AFFICHE 50 bougies
+def figure(df, tend, sig, tf_label, res, sup, canal_haut, canal_bas):
+    df = df.tail(50).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
     fig.patch.set_facecolor('#1e1e1e'); ax.set_facecolor('#1e1e1e')
+    
+    # Bougies
     for i, r in df.iterrows():
         col = '#26a69a' if r['c'] >= r['o'] else '#ef5350'
         ax.plot([i, i], [r['l'], r['h']], color=col, lw=1.2)
         ax.add_patch(Rectangle((i-0.3, min(r['o'], r['c'])), 0.6, abs(r['o']-r['c']), facecolor=col, edgecolor=col))
     
-    if zone_res:
-        ax.axhspan(zone_res[0], zone_res[1], color='red', alpha=0.2, label=f"Résistance ({zone_res[0]:.1f}-{zone_res[1]:.1f})")
-    if zone_sup:
-        ax.axhspan(zone_sup[0], zone_sup[1], color='lime', alpha=0.2, label=f"Support ({zone_sup[0]:.1f}-{zone_sup[1]:.1f})")
+    # Lignes de support et résistance (horizontales)
+    if res: ax.axhline(res, color="red", ls="--", lw=1.5, label=f"Résistance {res:.1f}")
+    if sup: ax.axhline(sup, color="lime", ls="--", lw=1.5, label=f"Support {sup:.1f}")
+    
+    # Canal de tendance (lignes obliques)
+    if canal_haut is not None and canal_bas is not None:
+        x = np.arange(len(df))
+        ax.plot(x, canal_haut, color="red", alpha=0.5, lw=1.5, ls="-.", label="Canal Haut")
+        ax.plot(x, canal_bas, color="lime", alpha=0.5, lw=1.5, ls="-.", label="Canal Bas")
         
     ax.set_title(f"R_75 - {tf_label} | {tend} | {sig or ''}", color="white")
     ax.tick_params(colors='white'); ax.grid(color='#333333', ls='--', alpha=0.5)
@@ -126,7 +96,7 @@ def figure(df, tend, sig, tf_label, zone_sup, zone_res):
 
 def main():
     now = datetime.now(BENIN)
-    log("DÉMARRAGE S/R (ZONES SUR 20 BOUGIES)")
+    log("DÉMARRAGE S/R (LIGNES + CANAL)")
     
     df_15 = fetch_deriv("R_75", "15m")
     df_30 = fetch_deriv("R_75", "30m")
@@ -138,50 +108,57 @@ def main():
     tend_m30 = tendance(df_30)
     aligne = (tend_h1 == tend_m30 and tend_h1 in ("HAUSSE", "BAISSE"))
     
-    zone_res, zone_sup = get_zones(df_60)
+    res, sup = get_zones(df_60)
+    
+    # Calcul du canal de tendance (régression linéaire sur les 50 dernières bougies H1)
+    df_60_50 = df_60.tail(50).reset_index(drop=True)
+    x = np.arange(len(df_60_50))
+    z = np.polyfit(x, df_60_50["c"], 1)
+    p = np.poly1d(z)
+    canal_haut = p(x) + (df_60_50["h"] - df_60_50["c"]).mean()
+    canal_bas = p(x) - (df_60_50["c"] - df_60_50["l"]).mean()
     
     sig = None
     if aligne:
-        sig = check_cassure_zone(df_15, zone_sup, zone_res, tend_h1)
+        sig = check_cassure(df_15, res, sup, tend_h1)
     
     log(f"R_75 analysé. H1:{tend_h1} M30:{tend_m30} Signal: {sig}")
-    if zone_res: log(f"Zone Résistance: {zone_res[0]:.2f} - {zone_res[1]:.2f}")
-    if zone_sup: log(f"Zone Support: {zone_sup[0]:.2f} - {zone_sup[1]:.2f}")
+    log(f"Résistance: {res:.2f} | Support: {sup:.2f}")
     
     prix = df_15["c"].iloc[-1]
     
-    texte = f"📊 **RAPPORT ZONES S/R R_75** - {now.strftime('%a %d/%m %H:%M')}\n\n"
+    texte = f"📊 **RAPPORT S/R R_75** - {now.strftime('%a %d/%m %H:%M')}\n\n"
     texte += f"🔹 **TENDANCE DE FOND**\n"
     texte += f"• H1 : {tend_h1}\n• M30 : {tend_m30}\n"
     texte += f"• Alignement : {'✅ OUI' if aligne else '❌ NON'}\n\n"
     
-    texte += f"📏 **ZONES DÉTECTÉES (Sur 20 bougies H1)**\n"
-    texte += f"• Résistance : {f'{zone_res[0]:.2f} - {zone_res[1]:.2f}' if zone_res else 'Aucune'}\n"
-    texte += f"• Support : {f'{zone_sup[0]:.2f} - {zone_sup[1]:.2f}' if zone_sup else 'Aucun'}\n"
+    texte += f"📏 **ZONES (Sur 20 bougies H1)**\n"
+    texte += f"• Résistance : {res:.2f}\n"
+    texte += f"• Support : {sup:.2f}\n"
     texte += f"• Prix actuel : {prix:.2f}\n\n"
     
-    texte += f"🎯 **SIGNAL DE CASSURE**\n"
+    texte += f"🎯 **SIGNAL**\n"
     if sig:
         texte += f"• {sig} CONFIRMÉ ! 🚀\n"
-        texte += f"• La bougie M15 a clôturé {'au-dessus de la zone de résistance' if sig == 'ACHAT' else 'en-dessous de la zone de support'}.\n"
-        texte += f"• Conseil : Cassure validée. Envisage une entrée avec Stop Loss de l'autre côté de la zone.\n"
+        texte += f"• La bougie M15 a clôturé {'au-dessus de la résistance' if sig == 'ACHAT' else 'en-dessous du support'}.\n"
+        texte += f"• Conseil : Cassure validée. Place ton Stop Loss de l'autre côté de la ligne.\n"
     else:
         if not aligne:
             texte += f"• Aucun signal. ⏳\n• Raison : H1 et M30 ne sont pas alignés.\n"
         else:
-            texte += f"• Aucun signal. ⏳\n• Raison : Tendance alignée ({tend_h1}), mais aucune cassure de zone confirmée sur M15.\n"
-            if tend_h1 == "HAUSSE" and zone_res:
-                texte += f"• Conseil : Attends que le prix clôture au-dessus de {zone_res[1]:.2f}.\n"
-            elif tend_h1 == "BAISSE" and zone_sup:
-                texte += f"• Conseil : Attends que le prix clôture en-dessous de {zone_sup[0]:.2f}.\n"
+            texte += f"• Aucun signal. ⏳\n• Raison : Tendance alignée ({tend_h1}), mais pas de cassure confirmée.\n"
+            if tend_h1 == "HAUSSE":
+                texte += f"• Conseil : Attends que le prix clôture au-dessus de {res:.2f}.\n"
+            else:
+                texte += f"• Conseil : Attends que le prix clôture en-dessous de {sup:.2f}.\n"
 
     topic = CONFIG["topics"]["principal"]
     if CONFIG["mode_affichage"] == "RAPPORT" or sig:
         for tf, df, tend in [("H1", df_60, tend_h1), ("M30", df_30, tend_m30), ("M15", df_15, tend_h1)]:
-            img = figure(df, tend, sig if tf == "M15" else None, tf, zone_sup, zone_res)
+            img = figure(df, tend, sig if tf == "M15" else None, tf, res, sup, canal_haut if tf == "H1" else None, canal_bas if tf == "H1" else None)
             post_ntfy(topic, f"R_75 - {tf}", img, f"R_75 {tf}")
             time.sleep(1.5)
         
-        post_ntfy(topic, texte, None, "Rapport Zones S/R R_75")
+        post_ntfy(topic, texte, None, "Rapport S/R R_75")
 
 if __name__ == "__main__": main()
