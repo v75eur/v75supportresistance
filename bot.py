@@ -48,7 +48,7 @@ def tendance(df):
     if last["sma_f"] < last["sma_s"]: return "BAISSE"
     return "NEUTRE"
 
-# --- VRAIE DÉTECTION DE ZONES (PIVOTS SUR 20 BOUGIES) ---
+# --- DÉTECTION DE ZONES (SUR 20 BOUGIES H1) ---
 def trouver_pivots(df, window=3):
     pivots_hauts = []
     pivots_bas = []
@@ -60,7 +60,7 @@ def trouver_pivots(df, window=3):
     return pivots_hauts, pivots_bas
 
 def get_zones(df_h1):
-    # On limite l'analyse aux 20 dernières bougies H1
+    # On analyse UNIQUEMENT les 20 dernières bougies pour trouver les zones
     df_h1 = df_h1.tail(20).reset_index(drop=True)
     
     hauts, bas = trouver_pivots(df_h1, window=2)
@@ -104,7 +104,7 @@ def check_cassure_zone(df, zone_sup, zone_res, sens):
     return None
 
 def figure(df, tend, sig, tf_label, zone_sup, zone_res):
-    df = df.tail(20).reset_index(drop=True) # On affiche 20 bougies sur le graphique
+    df = df.tail(50).reset_index(drop=True) # On AFFICHE 50 bougies
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
     fig.patch.set_facecolor('#1e1e1e'); ax.set_facecolor('#1e1e1e')
     for i, r in df.iterrows():
@@ -126,7 +126,7 @@ def figure(df, tend, sig, tf_label, zone_sup, zone_res):
 
 def main():
     now = datetime.now(BENIN)
-    log("DÉMARRAGE S/R (ZONES 20 BOUGIES)")
+    log("DÉMARRAGE S/R (ZONES SUR 20 BOUGIES)")
     
     df_15 = fetch_deriv("R_75", "15m")
     df_30 = fetch_deriv("R_75", "30m")
