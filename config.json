@@ -1,0 +1,19 @@
+{
+  "topics": {
+    "principal": "https://ntfy.sh/v75-sr-2026"
+  },
+  "mode_affichage": "RAPPORT",
+  "strategies": {
+    "sma": false,
+    "support_resistance": true
+  },
+  "marches": {
+    "deriv": {
+      "actif": true,
+      "24h": true,
+      "indices": {
+        "R_75": true
+      }
+    }
+  }
+}
