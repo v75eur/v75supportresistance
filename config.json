@@ -10,21 +10,58 @@
     "forex": {
       "actif": true,
       "paires": {
-        "XAUUSD": false, "XAGUSD": false, "EURUSD": false, "GBPUSD": false,
-        "USDJPY": false, "USDCHF": false, "USDCAD": false, "AUDUSD": false,
-        "NZDUSD": false, "EURGBP": false, "EURJPY": false, "GBPJPY": false,
-        "AUDJPY": false, "EURAUD": false, "EURCHF": false, "EURNZD": false,
-        "GBPCHF": false, "GBPAUD": false, "GBPNZD": false, "AUDNZD": false,
-        "AUDCAD": false, "AUDCHF": false, "CADJPY": false, "CHFJPY": false,
-        "NZDJPY": false, "CADCHF": false, "NZDCAD": false, "NZDCHF": false
+        "XAUUSD": false,
+        "XAGUSD": false,
+        "EURUSD": false,
+        "GBPUSD": false,
+        "USDJPY": false,
+        "USDCHF": false,
+        "USDCAD": false,
+        "AUDUSD": false,
+        "NZDUSD": false,
+        "EURGBP": false,
+        "EURJPY": false,
+        "GBPJPY": false,
+        "AUDJPY": false,
+        "EURAUD": false,
+        "EURCHF": false,
+        "EURNZD": false,
+        "GBPCHF": false,
+        "GBPAUD": false,
+        "GBPNZD": false,
+        "AUDNZD": false,
+        "AUDCAD": false,
+        "AUDCHF": false,
+        "CADJPY": false,
+        "CHFJPY": false,
+        "NZDJPY": false,
+        "CADCHF": false,
+        "NZDCAD": false,
+        "NZDCHF": false
       }
     },
     "deriv": {
       "actif": true,
       "indices": {
-        "R_10": false, "R_25": false, "R_50": false, "R_75": true, "R_100": false,
-        "CRASH_500": false, "CRASH_1000": false, "BOOM_500": false, "BOOM_1000": false
+        "R_10": false,
+        "R_25": false,
+        "R_50": false,
+        "R_75": true,
+        "R_100": false,
+        "CRASH_500": false,
+        "CRASH_1000": false,
+        "BOOM_500": false,
+        "BOOM_1000": false
       }
     }
+  },
+  "backtest": {
+    "actif": true,
+    "solde_depart": 50.0,
+    "lot": 0.01,
+    "valeur_pip": 0.1,
+    "ratio_sl": 1.5,
+    "ratio_tp1": 1.0,
+    "ratio_tp2": 2.0
   }
 }
