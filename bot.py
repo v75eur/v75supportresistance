@@ -66,17 +66,30 @@ def tendance(df):
     if last["sma_f"] < last["sma_s"]: return "BAISSE"
     return "NEUTRE"
 
-def get_zones(df_h1):
-    df_h1 = df_h1.tail(20).reset_index(drop=True)
-    res = df_h1["h"].max()
-    sup = df_h1["l"].min()
-    return res, sup
+# --- DÉTECTION DE L'ORDER BLOCK ---
+def detecter_order_block(df):
+    # On cherche le dernier Order Block : la dernière bougie haussière avant une forte baisse (ou l'inverse)
+    for i in range(len(df) - 2, 0, -1):
+        bougie = df.iloc[i]
+        suivante = df.iloc[i+1] if i+1 < len(df) else None
+        
+        if suivante is None: continue
+        
+        # Order Block Baissier (bougie verte suivie d'une grosse bougie rouge)
+        if bougie["c"] > bougie["o"] and suivante["c"] < suivante["o"] and (suivante["o"] - suivante["c"]) > (bougie["c"] - bougie["o"]):
+            return "BAISSIER", bougie["o"], bougie["c"]
+            
+        # Order Block Haussier (bougie rouge suivie d'une grosse bougie verte)
+        if bougie["c"] < bougie["o"] and suivante["c"] > suivante["o"] and (suivante["c"] - suivante["o"]) > (bougie["o"] - bougie["c"]):
+            return "HAUSSIER", bougie["c"], bougie["o"]
+            
+    return None, None, None
 
-def check_cassure(df, res, sup, sens):
-    if sens == "HAUSSE":
-        if df["c"].iloc[-2] <= res and df["c"].iloc[-1] > res: return "ACHAT"
-    if sens == "BAISSE":
-        if df["c"].iloc[-2] >= sup and df["c"].iloc[-1] < sup: return "VENTE"
+def check_cassure_ob(df, ob_type, ob_bas, ob_haut, sens):
+    if sens == "HAUSSE" and ob_type == "HAUSSIER":
+        if df["c"].iloc[-2] <= ob_haut and df["c"].iloc[-1] > ob_haut: return "ACHAT"
+    if sens == "BAISSE" and ob_type == "BAISSIER":
+        if df["c"].iloc[-2] >= ob_bas and df["c"].iloc[-1] < ob_bas: return "VENTE"
     return None
 
 def verifier_trades(df_15):
@@ -124,20 +137,16 @@ def generer_rapport_professionnel():
     total = len(fermes)
     taux_reussite = (len(gagnants) / total * 100) if total > 0 else 0
     pnl = solde - depart
-    
     gain_moyen = sum(x["gain_tp2"] for x in gagnants) / len(gagnants) if gagnants else 0
     perte_moyenne = sum(x["risque"] for x in perdants) / len(perdants) if perdants else 0
-    
     total_gains = sum(x["gain_tp2"] for x in gagnants)
     total_pertes = sum(x["risque"] for x in perdants)
     facteur_profit = total_gains / total_pertes if total_pertes > 0 else 0
-    
     perte_max = 0
     current = 0
     for x in fermes:
         if x.get("resultat") == "PERDU": current += x["risque"]; perte_max = max(perte_max, current)
         else: current = 0
-    
     serie = "".join(["G" if x.get("resultat") == "GAGNE" else "P" for x in fermes[-10:]])
     
     txt = f"\n\n📊 **STATISTIQUES DE TRADING**\n"
@@ -172,7 +181,7 @@ def generer_rapport_professionnel():
         txt += f"🔹 Aucun trade en cours. En attente d'un signal.\n"
     return txt
 
-def figure(df, tend, sig, tf_label, pair_name, res, sup):
+def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
     df = df.tail(50).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
     fig.patch.set_facecolor('#1e1e1e'); ax.set_facecolor('#1e1e1e')
@@ -181,9 +190,16 @@ def figure(df, tend, sig, tf_label, pair_name, res, sup):
         ax.plot([i, i], [r['l'], r['h']], color=col, lw=1.2)
         ax.add_patch(Rectangle((i-0.3, min(r['o'], r['c'])), 0.6, abs(r['o']-r['c']), facecolor=col, edgecolor=col))
     
-    if res: ax.axhline(res, color="red", ls="--", lw=1.5, label=f"Résistance {res:.1f}")
-    if sup: ax.axhline(sup, color="lime", ls="--", lw=1.5, label=f"Support {sup:.1f}")
-    
+    # Tracé de l'Order Block (rectangle)
+    if ob_type == "BAISSIER":
+        ax.axhspan(ob_bas, ob_haut, color='red', alpha=0.2, label=f"Order Block Baissier")
+        ax.axhline(ob_bas, color="red", ls="--", lw=1.5)
+        ax.axhline(ob_haut, color="red", ls="--", lw=1.5)
+    elif ob_type == "HAUSSIER":
+        ax.axhspan(ob_bas, ob_haut, color='lime', alpha=0.2, label=f"Order Block Haussier")
+        ax.axhline(ob_bas, color="lime", ls="--", lw=1.5)
+        ax.axhline(ob_haut, color="lime", ls="--", lw=1.5)
+        
     if tf_label == "M15":
         en_cours = [x for x in JOURNAL["trades"] if x["statut"] == "EN COURS"]
         if en_cours:
@@ -219,41 +235,42 @@ def analyser(pair_key, source, now):
         tend_m30 = tendance(df_30)
         aligne = (tend_h1 == tend_m30 and tend_h1 in ("HAUSSE", "BAISSE"))
         
-        res, sup = get_zones(df_60)
+        ob_type, ob_bas, ob_haut = detecter_order_block(df_60)
         
         sig = None
-        if aligne:
-            sig = check_cassure(df_15, res, sup, tend_h1)
+        if aligne and ob_type:
+            sig = check_cassure_ob(df_15, ob_type, ob_bas, ob_haut, tend_h1)
         
-        log(f"{pair_key} analysé. H1:{tend_h1} M30:{tend_m30} Signal: {sig}")
+        log(f"{pair_key} analysé. H1:{tend_h1} M30:{tend_m30} OB:{ob_type} Signal: {sig}")
         
         if sig and not any(x["statut"] == "EN COURS" for x in JOURNAL["trades"]):
             atr = (df_15["h"] - df_15["l"]).rolling(14).mean().iloc[-1]
             ouvrir_trade(sig, df_15["c"].iloc[-1], atr, len(df_15)-1, now)
         
-        texte = f"📊 **RAPPORT S/R {pair_key}** - {now.strftime('%a %d/%m %H:%M')}\n\n"
+        texte = f"📊 **RAPPORT ORDER BLOCK {pair_key}** - {now.strftime('%a %d/%m %H:%M')}\n\n"
         texte += f"🔹 **TENDANCE**\n• H1 : {tend_h1}\n• M30 : {tend_m30}\n"
         texte += f"• Alignement : {'✅ OUI' if aligne else '❌ NON'}\n\n"
-        texte += f"📏 **ZONES**\n• Résistance : {res:.2f}\n• Support : {sup:.2f}\n\n"
+        if ob_type:
+            texte += f"📏 **ORDER BLOCK DÉTECTÉ**\n• Type : {ob_type}\n• Zone : {ob_bas:.2f} - {ob_haut:.2f}\n\n"
         texte += f"🎯 **SIGNAL**\n"
-        if sig: texte += f"• {sig} CONFIRMÉ ! ✅\n"
+        if sig: texte += f"• {sig} CONFIRMÉ ! ✅ (Cassure de l'OB)\n"
         else:
             if not aligne: texte += f"• Aucun signal (H1/M30 non alignés).\n"
-            else: texte += f"• Aucun signal (pas de cassure).\n"
+            else: texte += f"• Aucun signal (pas de cassure de l'OB).\n"
         
         texte += generer_rapport_professionnel()
         
         topic = CONFIG["topics"]["principal"]
         for tf, df, tend in [("H1", df_60, tend_h1), ("M30", df_30, tend_m30), ("M15", df_15, tend_h1)]:
-            img = figure(df, tend, sig if tf == "M15" else None, tf, pair_key, res, sup)
+            img = figure(df, tend, sig if tf == "M15" else None, tf, pair_key, ob_type, ob_bas, ob_haut)
             post_ntfy(topic, f"{pair_key} - {tf}", img, f"{pair_key} {tf}")
             time.sleep(1.5)
-        post_ntfy(topic, texte, None, f"Rapport S/R {pair_key}")
+        post_ntfy(topic, texte, None, f"Rapport OB {pair_key}")
     except Exception as e: log(f"Erreur {pair_key}: {e}")
 
 def main():
     now = datetime.now(BENIN)
-    log("DÉMARRAGE S/R")
+    log("DÉMARRAGE ORDER BLOCK")
     if CONFIG["marches"]["forex"]["actif"]:
         for k in CONFIG["marches"]["forex"]["paires"]:
             if CONFIG["marches"]["forex"]["paires"][k]: analyser(k, "yahoo", now)
