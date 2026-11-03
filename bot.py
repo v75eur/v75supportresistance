@@ -153,7 +153,7 @@ def generer_rapport_professionnel():
     txt += f"• Taux de réussite : {taux_reussite:.0f}%\n"
     txt += f"• Facteur de profit : {facteur_profit:.2f}\n"
     txt += f"• Gain moyen : {gain_moyen:.2f}$\n"
-    txt += f• "• Perte moyenne : {perte_moyenne:.2f}$\n"
+    txt += f"• Perte moyenne : {perte_moyenne:.2f}$\n"
     txt += f"• Perte maximale : {perte_max:.2f}$\n"
     txt += f"• Série récente (10 derniers) : {serie if serie else 'Aucun'}\n"
     txt += f"━━━━━━━━━━━━━━━━━━━━━\n"
