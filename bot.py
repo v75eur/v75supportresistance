@@ -339,7 +339,7 @@ def detail_trade(pair, t, prix=None):
     x += f"• Ratio R:R : 1:{t['gain_max'] / t['risque']:.1f}\n"
     x += "━━━━━━━━━━━━━━━━━━━━━\n"
     x += "🧭 CONTEXTE\n"
-    x += f"• Tendance H1 + M30 : {t['tend']}\n"
+    x += f"• Tendance H1 : {t['tend']} | M30 : {t['tend']} → ✅ alignées\n"
     x += (f"• Order Block H1 {t['ob_type']} : {p(t['ob_bas'])} - {p(t['ob_haut'])} "
           f"(formé {local(t['ob_date'])})\n")
     x += f"• ATR M15 : {p(t['atr'])}\n"
@@ -361,10 +361,57 @@ def ligne_trade(pair, t):
             f"SL {fp(pair, t['sl_init'])} → {t['pnl']:+.2f}$")
 
 
-def rapport(pair, st, trades, ouvert, nb, debut, fin):
+def etat_marche(pair, df, zones):
+    """Tendances H1/M30, alignement, OB valide dans le sens, verdict."""
+    p = lambda v: fp(pair, v)
+    fin = df["close_time"].iloc[-1]
+    prix = float(df["c"].iloc[-1])
+    th1, tm30 = int(df["t_h1"].iloc[-1]), int(df["t_m30"].iloc[-1])
+    aligne = th1 == tm30 and th1 != 0
+    t = f"🧭 ÉTAT DU MARCHÉ {pair}\n"
+    t += f"• Prix : {p(prix)} (clôture M15 {local(fin)})\n"
+    t += f"• Tendance H1 : {TEND[th1]}\n• Tendance M30 : {TEND[tm30]}\n"
+    if not aligne:
+        t += "• Alignement : ❌ NON → aucun trade autorisé\n"
+        t += "• Verdict : on attend que H1 et M30 aillent dans le même sens\n"
+        return t, {"resume": "NON ALIGNE"}
+    sens = "ACHATS" if th1 == 1 else "VENTES"
+    type_ob = "HAUSSIER" if th1 == 1 else "BAISSIER"
+    t += f"• Alignement : ✅ OUI → uniquement des {sens}\n"
+    valides = []
+    for z in zones:
+        if z["dispo"] > fin or fin > z["expire"] or z["type"] != type_ob:
+            continue
+        apres = df.loc[df["close_time"] > z["dispo"], "c"]
+        if len(apres) and ((z["type"] == "HAUSSIER" and apres.min() < z["bas"])
+                           or (z["type"] == "BAISSIER" and apres.max() > z["haut"])):
+            continue
+        valides.append(z)
+    if not valides:
+        t += f"• OB {type_ob} valide : aucun\n"
+        t += "• Verdict : aligné, mais pas de zone exploitable → on attend\n"
+        return t, {"resume": f"ALIGNE {TEND[th1]} SANS OB"}
+    z = valides[-1]
+    t += (f"• OB {type_ob} : {p(z['bas'])} - {p(z['haut'])} "
+          f"(formé {local(z['dispo'])}, valide jusqu'à {local(z['expire'])})\n")
+    if z["bas"] <= prix <= z["haut"]:
+        t += "• Position : prix DANS la zone\n"
+    else:
+        dist = prix - z["haut"] if prix > z["haut"] else prix - z["bas"]
+        t += f"• Position : prix à {p(abs(dist))} {'au-dessus' if dist > 0 else 'en dessous'} de la zone\n"
+    if th1 == 1:
+        t += f"• Verdict : on attend un retest de la zone puis une clôture M15 au-dessus de {p(z['haut'])}\n"
+    else:
+        t += f"• Verdict : on attend un retest de la zone puis une clôture M15 en dessous de {p(z['bas'])}\n"
+    return t, {"resume": f"ALIGNE {TEND[th1]} OB"}
+
+
+def rapport(pair, st, trades, ouvert, nb, debut, fin, marche=""):
     t = f"📊 BACKTEST ORDER BLOCK {pair}\n"
     t += f"Période : {debut:%d/%m/%Y} → {fin:%d/%m/%Y} ({nb} bougies M15)\n"
     t += f"⚙️ Lot fixe {A['lot']} — risque = distance du SL\n"
+    if marche:
+        t += "━━━━━━━━━━━━━━━━━━━━━\n" + marche
     t += "━━━━━━━━━━━━━━━━━━━━━\n"
     t += "💰 COMPTE VIRTUEL\n"
     t += f"• Départ : {A['solde_depart']:.2f}$ → Actuel : {st['solde']:.2f}$\n"
@@ -466,11 +513,13 @@ def envoyer_graphiques(pair, df, zones, ouvert):
     valides = [z for z in zones if z["dispo"] <= fin]
     zone = valides[-1] if valides else None
     th1, tm30 = TEND[int(df["t_h1"].iloc[-1])], TEND[int(df["t_m30"].iloc[-1])]
+    al = "ALIGNEES" if th1 == tm30 and th1 != "NEUTRE" else "NON ALIGNEES"
+    tt = f"H1 {th1} / M30 {tm30} - {al}"
     vues = [
         ("H1", ohlc(df, "1h"), f"{pair} H1 | {th1}", None, 50),
         ("M30", ohlc(df, "30min"), f"{pair} M30 | {tm30}", None, 50),
-        ("M15 plan", df, f"{pair} M15 - plan de trade", ouvert, 50),
-        ("M15 contexte", df, f"{pair} M15 - contexte (150 bougies)", ouvert, 150),
+        ("M15 plan", df, f"{pair} M15 plan | {tt}", ouvert, 50),
+        ("M15 contexte", df, f"{pair} M15 contexte | {tt}", ouvert, 150),
     ]
     for nom, d, titre, trade, n in vues:
         img = figure(pair, d, titre, zone, trade, n)
@@ -525,7 +574,9 @@ def analyser(pair, source, mode, etat):
         trades, ouvert, solde = simuler(df, zones, pair)
         log(f"{pair}: {len(df)} bougies, {len(zones)} OB, {len(trades)} trades clôturés")
         st = statistiques(trades, solde)
-        texte = rapport(pair, st, trades, ouvert, len(df), df["time"].iloc[0], df["time"].iloc[-1])
+        marche_txt, marche = etat_marche(pair, df, zones)
+        texte = rapport(pair, st, trades, ouvert, len(df), df["time"].iloc[0],
+                        df["time"].iloc[-1], marche_txt)
 
         if mode == "backtest":
             print(texte)
@@ -541,6 +592,11 @@ def analyser(pair, source, mode, etat):
             etat[pair] = {}
         suivi = etat[pair]
         maj_suivi(pair, trades, ouvert, suivi)
+
+        meta = etat.setdefault("_meta", {})
+        if LV.get("statut_chaque_execution") or meta.get(pair) != marche["resume"]:
+            meta[pair] = marche["resume"]
+            post_ntfy(f"Marche {pair}", marche_txt)
 
         recent = len(df) - 1 - LV["signal_age_max_bougies"]
         if ouvert and ouvert["idx"] >= recent and str(ouvert["date"]) not in suivi:

@@ -65,6 +65,7 @@
     }
   },
   "live": {
-    "signal_age_max_bougies": 1
+    "signal_age_max_bougies": 1,
+    "statut_chaque_execution": false
   }
 }
