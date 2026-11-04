@@ -46,8 +46,52 @@ def fp(pair, x):
     return f"{x:.{d}f}"
 
 
-def contrat(pair):
-    return A["taille_contrat"].get(pair, 1)
+def spec(pair):
+    """Spécification du symbole, comme dans MT5 (Propriétés)."""
+    s = {"contrat": 1, "lot_min": 0.01, "lot_pas": 0.01}
+    s.update(A["instruments"].get(pair, {}))
+    return s
+
+
+def usd_par_unite_prix(pair, prix):
+    """$ gagnés/perdus pour 1 lot et 1.00 de variation de prix (calcul MT5 'Forex').
+    Profit = (sortie - entrée) x contrat x lots, converti en USD."""
+    c = spec(pair)["contrat"]
+    if len(pair) == 6 and pair.startswith("USD"):  # USDJPY, USDCAD, USDCHF : bénéfice en devise cotée
+        return c / prix
+    return c
+
+
+def pip_size(pair):
+    """Taille d'un pip pour le forex (None pour métaux et indices)."""
+    if len(pair) == 6 and pair not in ("XAUUSD", "XAGUSD"):
+        return 0.01 if pair.endswith("JPY") else 0.0001
+    return None
+
+
+def dist_txt(pair, d):
+    txt = fp(pair, d)
+    pip = pip_size(pair)
+    if pip:
+        txt += f" = {d / pip:.1f} pips"
+    return txt
+
+
+def valeur_txt(pair, usd_unite):
+    pip = pip_size(pair)
+    if pip:
+        return f"{pip * usd_unite * A['lot']:.2f}$ par pip"
+    return f"{usd_unite * A['lot']:.2f}$ par 1.00 de prix"
+
+
+def verif_lot(pair):
+    s = spec(pair)
+    lot = A["lot"]
+    if lot < s["lot_min"] - 1e-12:
+        return f"⚠️ Lot {lot} inférieur au minimum {s['lot_min']} de {pair}\n"
+    if abs(round(lot / s["lot_pas"]) * s["lot_pas"] - lot) > 1e-9:
+        return f"⚠️ Lot {lot} n'est pas un multiple du pas {s['lot_pas']} de {pair}\n"
+    return ""
 
 
 # ---------------------------------------------------------------- état
@@ -213,6 +257,7 @@ def simuler(df, zones, pair):
     th1, tm30 = df["t_h1"].to_numpy(), df["t_m30"].to_numpy()
     ct = df["close_time"].tolist()
     part, rr1, rr2 = S["part_tp1"], S["rr_tp1"], S["rr_tp2"]
+    sp = spec(pair).get("spread", A["spread"])
 
     for i in range(1, len(df)):
         # 1. gestion du trade ouvert
@@ -240,17 +285,18 @@ def simuler(df, zones, pair):
         for z in actives:
             sens = None
             if th1[i] == 1 and z["type"] == "HAUSSIER" and L_[i] <= z["haut"] and C_[i] > z["haut"]:
-                sens, entree = "ACHAT", C_[i] + A["spread"]
+                sens, entree = "ACHAT", C_[i] + sp
                 sl = min(z["bas"], L_[i]) - S["buffer_atr"] * atr[i]
             elif th1[i] == -1 and z["type"] == "BAISSIER" and H_[i] >= z["bas"] and C_[i] < z["bas"]:
-                sens, entree = "VENTE", C_[i] - A["spread"]
+                sens, entree = "VENTE", C_[i] - sp
                 sl = max(z["haut"], H_[i]) + S["buffer_atr"] * atr[i]
             if not sens:
                 continue
             dist = abs(entree - sl)
             if dist <= 0:
                 continue
-            risque = dist * contrat(pair) * A["lot"]  # perte en $ si SL touché
+            usd_u = usd_par_unite_prix(pair, entree)
+            risque = dist * usd_u * A["lot"]  # perte en $ si SL touché (principe MT5)
             if A["risque_max_usd"] > 0 and risque > A["risque_max_usd"]:
                 continue
             sgn = 1 if sens == "ACHAT" else -1
@@ -259,7 +305,7 @@ def simuler(df, zones, pair):
                 "sl_init": sl, "sl": sl, "dist": dist,
                 "tp1": entree + sgn * rr1 * dist,
                 "tp2": entree + sgn * rr2 * dist,
-                "risque": risque,
+                "risque": risque, "usd_unite": usd_u,
                 "gain_tp1": part * rr1 * risque,
                 "gain_max": (part * rr1 + (1 - part) * rr2) * risque,
                 "atr": float(atr[i]), "tend": TEND[int(th1[i])],
@@ -329,11 +375,12 @@ def detail_trade(pair, t, prix=None):
     x += "━━━━━━━━━━━━━━━━━━━━━\n"
     x += "📋 À PLACER\n"
     x += f"• Entrée : {p(t['entree'])}\n"
-    x += f"• Stop Loss : {p(t['sl_init'])} (distance {p(t['dist'])})\n"
+    x += f"• Stop Loss : {p(t['sl_init'])} (distance {dist_txt(pair, t['dist'])})\n"
     x += f"• TP1 : {p(t['tp1'])} → {tp1_txt}\n"
     x += f"• TP2 : {p(t['tp2'])}\n"
     x += "━━━━━━━━━━━━━━━━━━━━━\n"
     x += f"💵 RISQUE / GAIN (lot {A['lot']})\n"
+    x += f"• Valeur : {valeur_txt(pair, t['usd_unite'])}\n"
     x += f"• Perte si SL : -{t['risque']:.2f}$\n"
     x += f"• Gain si TP2 : +{t['gain_max']:.2f}$\n"
     x += f"• Ratio R:R : 1:{t['gain_max'] / t['risque']:.1f}\n"
@@ -410,6 +457,7 @@ def rapport(pair, st, trades, ouvert, nb, debut, fin, marche=""):
     t = f"📊 BACKTEST ORDER BLOCK {pair}\n"
     t += f"Période : {debut:%d/%m/%Y} → {fin:%d/%m/%Y} ({nb} bougies M15)\n"
     t += f"⚙️ Lot fixe {A['lot']} — risque = distance du SL\n"
+    t += verif_lot(pair)
     if marche:
         t += "━━━━━━━━━━━━━━━━━━━━━\n" + marche
     t += "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -565,6 +613,9 @@ def maj_suivi(pair, trades, ouvert, suivi):
 # ---------------------------------------------------------------- orchestration
 def analyser(pair, source, mode, etat):
     try:
+        if len(pair) == 6 and "USD" not in pair:
+            log(f"{pair}: paire croisée non supportée (conversion en $ impossible)")
+            return
         df = fetch_yahoo(pair) if source == "yahoo" else fetch_deriv(pair)
         if df is None or len(df) < 200:
             log(f"{pair}: pas assez de données")
@@ -635,3 +686,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -48,24 +48,61 @@
     "lot": 0.01,
     "risque_max_usd": 0,
     "spread": 0.0,
-    "taille_contrat": {
-      "XAUUSD": 100,
-      "XAGUSD": 5000,
-      "EURUSD": 100000,
-      "GBPUSD": 100000,
-      "USDJPY": 100000,
-      "AUDUSD": 100000,
-      "USDCAD": 100000,
-      "USDCHF": 100000,
-      "R_10": 1,
-      "R_25": 1,
-      "R_50": 1,
-      "R_75": 1,
-      "R_100": 1
+    "instruments": {
+      "EURUSD": {
+        "contrat": 100000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "GBPUSD": {
+        "contrat": 100000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "AUDUSD": {
+        "contrat": 100000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "USDJPY": {
+        "contrat": 100000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "USDCAD": {
+        "contrat": 100000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "USDCHF": {
+        "contrat": 100000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "XAUUSD": {
+        "contrat": 100,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "XAGUSD": {
+        "contrat": 5000,
+        "lot_min": 0.01,
+        "lot_pas": 0.01
+      },
+      "R_75": {
+        "contrat": 1,
+        "lot_min": 0.001,
+        "lot_pas": 0.001
+      },
+      "R_100": {
+        "contrat": 1,
+        "lot_min": 0.5,
+        "lot_pas": 0.01
+      }
     }
   },
   "live": {
-    "signal_age_max_bougies": 1,
+    "signal_age_max_bougies": 2,
     "statut_chaque_execution": false
   }
 }
