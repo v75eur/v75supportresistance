@@ -1,43 +1,19 @@
 {
-  "topics": {
-    "principal": "https://ntfy.sh/v75-sr-2026"
-  },
-  "mode_affichage": "RAPPORT",
-  "strategies": {
-    "support_resistance": true
-  },
+  "ntfy": "https://ntfy.sh/v75-sr-2026",
+  "deriv_ws": "wss://api.derivws.com/trading/v1/options/ws/public",
+  "fuseau_heures": 1,
   "marches": {
     "forex": {
-      "actif": true,
+      "actif": false,
       "paires": {
-        "XAUUSD": false,
+        "XAUUSD": true,
         "XAGUSD": false,
         "EURUSD": false,
         "GBPUSD": false,
         "USDJPY": false,
-        "USDCHF": false,
-        "USDCAD": false,
         "AUDUSD": false,
-        "NZDUSD": false,
-        "EURGBP": false,
-        "EURJPY": false,
-        "GBPJPY": false,
-        "AUDJPY": false,
-        "EURAUD": false,
-        "EURCHF": false,
-        "EURNZD": false,
-        "GBPCHF": false,
-        "GBPAUD": false,
-        "GBPNZD": false,
-        "AUDNZD": false,
-        "AUDCAD": false,
-        "AUDCHF": false,
-        "CADJPY": false,
-        "CHFJPY": false,
-        "NZDJPY": false,
-        "CADCHF": false,
-        "NZDCAD": false,
-        "NZDCHF": false
+        "USDCAD": false,
+        "USDCHF": false
       }
     },
     "deriv": {
@@ -47,21 +23,48 @@
         "R_25": false,
         "R_50": false,
         "R_75": true,
-        "R_100": false,
-        "CRASH_500": false,
-        "CRASH_1000": false,
-        "BOOM_500": false,
-        "BOOM_1000": false
+        "R_100": false
       }
     }
   },
-  "backtest": {
-    "actif": true,
+  "historique": {
+    "deriv_bougies": 5000,
+    "yahoo_range": "60d"
+  },
+  "strategie": {
+    "sma_rapide": 3,
+    "sma_lente": 25,
+    "impulsion_mult": 1.5,
+    "ob_lookback": 5,
+    "ob_age_max_h1": 48,
+    "atr_periode": 14,
+    "buffer_atr": 0.2,
+    "rr_tp1": 1.0,
+    "rr_tp2": 2.0,
+    "part_tp1": 0.0
+  },
+  "compte": {
     "solde_depart": 50.0,
     "lot": 0.01,
-    "valeur_pip": 0.1,
-    "ratio_sl": 1.5,
-    "ratio_tp1": 1.0,
-    "ratio_tp2": 2.0
+    "risque_max_usd": 0,
+    "spread": 0.0,
+    "taille_contrat": {
+      "XAUUSD": 100,
+      "XAGUSD": 5000,
+      "EURUSD": 100000,
+      "GBPUSD": 100000,
+      "USDJPY": 100000,
+      "AUDUSD": 100000,
+      "USDCAD": 100000,
+      "USDCHF": 100000,
+      "R_10": 1,
+      "R_25": 1,
+      "R_50": 1,
+      "R_75": 1,
+      "R_100": 1
+    }
+  },
+  "live": {
+    "signal_age_max_bougies": 1
   }
 }
