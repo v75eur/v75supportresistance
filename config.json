@@ -1,108 +1,72 @@
 {
-  "ntfy": "https://ntfy.sh/v75-sr-2026",
-  "deriv_ws": "wss://api.derivws.com/trading/v1/options/ws/public",
-  "fuseau_heures": 1,
+  "_INSTRUCTION_GENERALE": "=== CONFIGURATION DU BOT SUPPORT/RESISTANCE ===",
+  "_INSTRUCTION_1": "Modifie les valeurs ci-dessous. Ne touche pas aux lignes _INSTRUCTION.",
+
+  "topics": {
+    "_INSTRUCTION": "Le lien de ton canal ntfy pour recevoir les alertes.",
+    "principal": "https://ntfy.sh/v75-sr-2026"
+  },
+
+  "mode_affichage": "RAPPORT",
+  "_INSTRUCTION_MODE_AFFICHAGE": "RAPPORT = envoie les graphiques toutes les 15 min. SIGNAL = envoie uniquement quand il y a un signal.",
+
+  "mode_notification": "EVENEMENT",
+  "_INSTRUCTION_MODE_NOTIF": "RAPPORT = tout. SIGNAL = que les nouveaux signaux. EVENEMENT = signaux + TP1/TP2/SL touchés (recommandé).",
+
+  "strategies": {
+    "_INSTRUCTION": "Active la stratégie Support/Résistance (Order Block).",
+    "support_resistance": true
+  },
+
+  "backtest": {
+    "_INSTRUCTION": "Paramètres du compte virtuel pour le backtest.",
+    "solde_depart": 50.0,
+    "lot": 0.01,
+    "valeur_pip": 0.10
+  },
+
+  "parametres_risque": {
+    "_INSTRUCTION": "Réglages du risque. stop_loss_multiplier = distance du SL (2.0 = 2x l'ATR). tp1 = 1.5x le SL. tp2 = 3x le SL.",
+    "stop_loss_multiplier": 2.0,
+    "tp1_multiplier": 1.5,
+    "tp2_multiplier": 3.0,
+    "break_even_active": true,
+    "trailing_stop_active": true,
+    "trailing_stop_distance": 1.5
+  },
+
+  "metatrader": {
+    "_INSTRUCTION": "Paramètres réels pour MetaTrader. spread = écart en pips. valeur_pip = combien vaut 1 pip en dollars (pour 0.01 lot).",
+    "spread_eurusd": 0.0002,
+    "spread_xauusd": 0.30,
+    "spread_r75": 2.0,
+    "valeur_pip_eurusd": 0.10,
+    "valeur_pip_xauusd": 0.01,
+    "valeur_pip_r75": 1.00
+  },
+
   "marches": {
+    "_INSTRUCTION": "Choisis les marchés à analyser. Mets true pour activer, false pour désactiver.",
     "forex": {
-      "actif": false,
+      "_INSTRUCTION": "Paires Forex (Yahoo Finance).",
+      "actif": true,
       "paires": {
-        "XAUUSD": true,
-        "XAGUSD": false,
-        "EURUSD": false,
-        "GBPUSD": false,
-        "USDJPY": false,
-        "AUDUSD": false,
-        "USDCAD": false,
-        "USDCHF": false
+        "XAUUSD": false, "XAGUSD": false, "EURUSD": false, "GBPUSD": false,
+        "USDJPY": false, "USDCHF": false, "USDCAD": false, "AUDUSD": false,
+        "NZDUSD": false, "EURGBP": false, "EURJPY": false, "GBPJPY": false,
+        "AUDJPY": false, "EURAUD": false, "EURCHF": false, "EURNZD": false,
+        "GBPCHF": false, "GBPAUD": false, "GBPNZD": false, "AUDNZD": false,
+        "AUDCAD": false, "AUDCHF": false, "CADJPY": false, "CHFJPY": false,
+        "NZDJPY": false, "CADCHF": false, "NZDCAD": false, "NZDCHF": false
       }
     },
     "deriv": {
+      "_INSTRUCTION": "Indices synthétiques (Deriv).",
       "actif": true,
       "indices": {
-        "R_10": false,
-        "R_25": false,
-        "R_50": false,
-        "R_75": true,
-        "R_100": false
+        "R_10": false, "R_25": false, "R_50": false, "R_75": true, "R_100": false,
+        "CRASH_500": false, "CRASH_1000": false, "BOOM_500": false, "BOOM_1000": false
       }
     }
-  },
-  "historique": {
-    "deriv_bougies": 5000,
-    "yahoo_range": "60d"
-  },
-  "strategie": {
-    "sma_rapide": 3,
-    "sma_lente": 25,
-    "impulsion_mult": 1.5,
-    "ob_lookback": 5,
-    "ob_age_max_h1": 48,
-    "atr_periode": 14,
-    "buffer_atr": 0.2,
-    "rr_tp1": 1.0,
-    "rr_tp2": 2.0,
-    "part_tp1": 0.0
-  },
-  "compte": {
-    "solde_depart": 50.0,
-    "lot": 0.01,
-    "risque_max_usd": 0,
-    "spread": 0.0,
-    "instruments": {
-      "EURUSD": {
-        "contrat": 100000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "GBPUSD": {
-        "contrat": 100000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "AUDUSD": {
-        "contrat": 100000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "USDJPY": {
-        "contrat": 100000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "USDCAD": {
-        "contrat": 100000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "USDCHF": {
-        "contrat": 100000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "XAUUSD": {
-        "contrat": 100,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "XAGUSD": {
-        "contrat": 5000,
-        "lot_min": 0.01,
-        "lot_pas": 0.01
-      },
-      "R_75": {
-        "contrat": 1,
-        "lot_min": 0.001,
-        "lot_pas": 0.001
-      },
-      "R_100": {
-        "contrat": 1,
-        "lot_min": 0.5,
-        "lot_pas": 0.01
-      }
-    }
-  },
-  "live": {
-    "signal_age_max_bougies": 2,
-    "statut_chaque_execution": false
   }
 }
