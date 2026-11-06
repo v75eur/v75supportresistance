@@ -1,32 +1,18 @@
 {
-  "_INSTRUCTION_GENERALE": "=== CONFIGURATION DU BOT SUPPORT/RESISTANCE ===",
-  "_INSTRUCTION_1": "Modifie les valeurs ci-dessous. Ne touche pas aux lignes _INSTRUCTION.",
-
   "topics": {
-    "_INSTRUCTION": "Le lien de ton canal ntfy pour recevoir les alertes.",
     "principal": "https://ntfy.sh/v75-sr-2026"
   },
-
   "mode_affichage": "RAPPORT",
-  "_INSTRUCTION_MODE_AFFICHAGE": "RAPPORT = envoie les graphiques toutes les 15 min. SIGNAL = envoie uniquement quand il y a un signal.",
-
   "mode_notification": "EVENEMENT",
-  "_INSTRUCTION_MODE_NOTIF": "RAPPORT = tout. SIGNAL = que les nouveaux signaux. EVENEMENT = signaux + TP1/TP2/SL touchés (recommandé).",
-
   "strategies": {
-    "_INSTRUCTION": "Active la stratégie Support/Résistance (Order Block).",
     "support_resistance": true
   },
-
   "backtest": {
-    "_INSTRUCTION": "Paramètres du compte virtuel pour le backtest.",
     "solde_depart": 50.0,
     "lot": 0.01,
     "valeur_pip": 0.10
   },
-
   "parametres_risque": {
-    "_INSTRUCTION": "Réglages du risque. stop_loss_multiplier = distance du SL (2.0 = 2x l'ATR). tp1 = 1.5x le SL. tp2 = 3x le SL.",
     "stop_loss_multiplier": 2.0,
     "tp1_multiplier": 1.5,
     "tp2_multiplier": 3.0,
@@ -34,9 +20,7 @@
     "trailing_stop_active": true,
     "trailing_stop_distance": 1.5
   },
-
   "metatrader": {
-    "_INSTRUCTION": "Paramètres réels pour MetaTrader. spread = écart en pips. valeur_pip = combien vaut 1 pip en dollars (pour 0.01 lot).",
     "spread_eurusd": 0.0002,
     "spread_xauusd": 0.30,
     "spread_r75": 2.0,
@@ -44,11 +28,8 @@
     "valeur_pip_xauusd": 0.01,
     "valeur_pip_r75": 1.00
   },
-
   "marches": {
-    "_INSTRUCTION": "Choisis les marchés à analyser. Mets true pour activer, false pour désactiver.",
     "forex": {
-      "_INSTRUCTION": "Paires Forex (Yahoo Finance).",
       "actif": true,
       "paires": {
         "XAUUSD": false, "XAGUSD": false, "EURUSD": false, "GBPUSD": false,
@@ -61,7 +42,6 @@
       }
     },
     "deriv": {
-      "_INSTRUCTION": "Indices synthétiques (Deriv).",
       "actif": true,
       "indices": {
         "R_10": false, "R_25": false, "R_50": false, "R_75": true, "R_100": false,

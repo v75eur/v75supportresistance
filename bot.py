@@ -11,9 +11,12 @@ CONFIG = json.load(open("config.json"))
 SMA_FAST, SMA_SLOW = 3, 25
 JOURNAL_FILE = "journal.json"
 
+# Initialisation du journal (créé automatiquement s'il n'existe pas)
 if not os.path.exists(JOURNAL_FILE):
-    json.dump({"trades": [], "solde": CONFIG["backtest"]["solde_depart"]}, open(JOURNAL_FILE, "w"))
-JOURNAL = json.load(open(JOURNAL_FILE))
+    JOURNAL = {"trades": [], "solde": CONFIG["backtest"]["solde_depart"]}
+    json.dump(JOURNAL, open(JOURNAL_FILE, "w"))
+else:
+    JOURNAL = json.load(open(JOURNAL_FILE))
 
 FOREX_SYMBOLS = {"XAUUSD": "GC=F", "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X"}
 DERIV_SYMBOLS = {"R_75": "R_75"}
@@ -39,7 +42,7 @@ def fetch_yahoo(symbol, interval):
     df = pd.DataFrame({"t": pd.to_datetime(j["timestamp"], unit="s", utc=True), "o": q["open"], "h": q["high"], "l": q["low"], "c": q["close"]}).dropna()
     return df.iloc[:-1].reset_index(drop=True) if len(df) > 30 else None
 
-async def _fetch_deriv(symbol, granularity, count=100):
+async def _fetch_deriv(symbol, granularity, count=500):
     uri = 'wss://api.derivws.com/trading/v1/options/ws/public'
     async with websockets.connect(uri, open_timeout=30) as ws:
         await ws.send(json.dumps({'ticks_history': symbol, 'style': 'candles', 'granularity': granularity, 'count': count, 'end': 'latest'}))
@@ -89,12 +92,13 @@ def verifier_trades(df_15):
     solde = JOURNAL["solde"]
     updated = False
     atr_actuel = (df_15["h"] - df_15["l"]).rolling(14).mean().iloc[-1]
+    
     for t in trades:
         if t["statut"] == "FERME": continue
         for i in range(t.get("idx_ouverture", 0) + 1, len(df_15)):
             r = df_15.iloc[i]
             if t["sens"] == "ACHAT":
-                if r["l"] <= t["sl"]: t["statut"] = "FERME"; t["resultat"] = "PERDU"; solde -= t["risque"]; break
+                if r["l"] <= t["sl"]: t["statut"] = "FERME"; t["resultat"] = "PERDU"; solde -= t["risque"]; updated = True; break
                 if r["h"] >= t["tp1"] and not t["tp1_touche"]:
                     t["tp1_touche"] = True; solde += t["gain_tp1"]; t["sl"] = t["entree"]; updated = True
                     if CONFIG["parametres_risque"]["trailing_stop_active"]:
@@ -103,9 +107,9 @@ def verifier_trades(df_15):
                 if t.get("trailing_actif") and r["c"] > t["sl"]:
                     nouveau_sl = r["c"] - t["trailing_distance"]
                     if nouveau_sl > t["sl"]: t["sl"] = nouveau_sl; updated = True
-                if r["h"] >= t["tp2"]: t["statut"] = "FERME"; t["resultat"] = "GAGNE"; solde += t["gain_tp2"]; break
+                if r["h"] >= t["tp2"]: t["statut"] = "FERME"; t["resultat"] = "GAGNE"; solde += t["gain_tp2"]; updated = True; break
             else:
-                if r["h"] >= t["sl"]: t["statut"] = "FERME"; t["resultat"] = "PERDU"; solde -= t["risque"]; break
+                if r["h"] >= t["sl"]: t["statut"] = "FERME"; t["resultat"] = "PERDU"; solde -= t["risque"]; updated = True; break
                 if r["l"] <= t["tp1"] and not t["tp1_touche"]:
                     t["tp1_touche"] = True; solde += t["gain_tp1"]; t["sl"] = t["entree"]; updated = True
                     if CONFIG["parametres_risque"]["trailing_stop_active"]:
@@ -114,7 +118,7 @@ def verifier_trades(df_15):
                 if t.get("trailing_actif") and r["c"] < t["sl"]:
                     nouveau_sl = r["c"] + t["trailing_distance"]
                     if nouveau_sl < t["sl"]: t["sl"] = nouveau_sl; updated = True
-                if r["l"] <= t["tp2"]: t["statut"] = "FERME"; t["resultat"] = "GAGNE"; solde += t["gain_tp2"]; break
+                if r["l"] <= t["tp2"]: t["statut"] = "FERME"; t["resultat"] = "GAGNE"; solde += t["gain_tp2"]; updated = True; break
     JOURNAL["solde"] = solde
     if updated: sauvegarder_journal()
 
@@ -125,15 +129,9 @@ def ouvrir_trade(sens, prix, atr, idx, now, pair_key):
     tp2_dist = sl_dist * cfg["tp2_multiplier"]
     
     mt = CONFIG["metatrader"]
-    if pair_key == "EURUSD":
-        spread = mt["spread_eurusd"]
-        valeur_pip = mt["valeur_pip_eurusd"]
-    elif pair_key == "XAUUSD":
-        spread = mt["spread_xauusd"]
-        valeur_pip = mt["valeur_pip_xauusd"]
-    else:
-        spread = mt["spread_r75"]
-        valeur_pip = mt["valeur_pip_r75"]
+    if pair_key == "EURUSD": spread = mt["spread_eurusd"]; valeur_pip = mt["valeur_pip_eurusd"]
+    elif pair_key == "XAUUSD": spread = mt["spread_xauusd"]; valeur_pip = mt["valeur_pip_xauusd"]
+    else: spread = mt["spread_r75"]; valeur_pip = mt["valeur_pip_r75"]
         
     prix_entree = prix + spread if sens == "ACHAT" else prix - spread
     sl = prix_entree - sl_dist if sens == "ACHAT" else prix_entree + sl_dist
@@ -142,8 +140,7 @@ def ouvrir_trade(sens, prix, atr, idx, now, pair_key):
     
     trade = {"date": str(now), "sens": sens, "entree": prix_entree, "sl": sl, "tp1": tp1, "tp2": tp2,
              "tp1_touche": False, "risque": abs(sl_dist * valeur_pip * 100),
-             "gain_tp1": abs(tp1_dist * valeur_pip * 100), 
-             "gain_tp2": abs(tp2_dist * valeur_pip * 100),
+             "gain_tp1": abs(tp1_dist * valeur_pip * 100), "gain_tp2": abs(tp2_dist * valeur_pip * 100),
              "statut": "EN COURS", "resultat": None, "idx_ouverture": idx}
     JOURNAL["trades"].append(trade)
     sauvegarder_journal()
@@ -151,27 +148,20 @@ def ouvrir_trade(sens, prix, atr, idx, now, pair_key):
 
 def generer_ticket_metatrader(trade, pair_key):
     mt = CONFIG["metatrader"]
-    if pair_key == "EURUSD":
-        valeur_pip = mt["valeur_pip_eurusd"]
-    elif pair_key == "XAUUSD":
-        valeur_pip = mt["valeur_pip_xauusd"]
-    else:
-        valeur_pip = mt["valeur_pip_r75"]
+    if pair_key == "EURUSD": valeur_pip = mt["valeur_pip_eurusd"]; div = 0.0001
+    elif pair_key == "XAUUSD": valeur_pip = mt["valeur_pip_xauusd"]; div = 0.01
+    else: valeur_pip = mt["valeur_pip_r75"]; div = 1.0
     
-    sl_pips = abs(trade["entree"] - trade["sl"]) / (0.0001 if pair_key == "EURUSD" else (0.01 if pair_key == "XAUUSD" else 1.0))
-    tp1_pips = abs(trade["tp1"] - trade["entree"]) / (0.0001 if pair_key == "EURUSD" else (0.01 if pair_key == "XAUUSD" else 1.0))
-    tp2_pips = abs(trade["tp2"] - trade["entree"]) / (0.0001 if pair_key == "EURUSD" else (0.01 if pair_key == "XAUUSD" else 1.0))
-    
+    sl_pips = abs(trade["entree"] - trade["sl"]) / div
+    tp1_pips = abs(trade["tp1"] - trade["entree"]) / div
+    tp2_pips = abs(trade["tp2"] - trade["entree"]) / div
     risque = sl_pips * valeur_pip * 100
     gain_tp1 = tp1_pips * valeur_pip * 100
     gain_tp2 = tp2_pips * valeur_pip * 100
     
-    txt = f"🎯 **ORDRE À PASSER SUR MT5**\n"
-    txt += f"━━━━━━━━━━━━━━━━━━━━━\n"
-    txt += f"• Symbole : {pair_key}\n"
-    txt += f"• Type : {'Achat (Buy)' if trade['sens'] == 'ACHAT' else 'Vente (Sell)'}\n"
-    txt += f"• Volume : 0.01 lot\n"
-    txt += f"• Entrée : {trade['entree']:.5f}\n"
+    txt = f"🎯 **ORDRE À PASSER SUR MT5**\n━━━━━━━━━━━━━━━━━━━━━\n"
+    txt += f"• Symbole : {pair_key}\n• Type : {'Achat (Buy)' if trade['sens'] == 'ACHAT' else 'Vente (Sell)'}\n"
+    txt += f"• Volume : 0.01 lot\n• Entrée : {trade['entree']:.5f}\n"
     txt += f"• SL : {trade['sl']:.5f} ({sl_pips:.0f} pips) → Risque : -{risque:.2f}$\n"
     txt += f"• TP1 : {trade['tp1']:.5f} ({tp1_pips:.0f} pips) → Gain : +{gain_tp1:.2f}$\n"
     txt += f"• TP2 : {trade['tp2']:.5f} ({tp2_pips:.0f} pips) → Gain : +{gain_tp2:.2f}$\n"
@@ -179,58 +169,27 @@ def generer_ticket_metatrader(trade, pair_key):
     return txt
 
 def generer_rapport_professionnel():
-    t = JOURNAL["trades"]
-    solde = JOURNAL["solde"]
-    depart = CONFIG["backtest"]["solde_depart"]
+    t = JOURNAL["trades"]; solde = JOURNAL["solde"]; depart = CONFIG["backtest"]["solde_depart"]
     fermes = [x for x in t if x["statut"] == "FERME"]
     gagnants = [x for x in fermes if x.get("resultat") == "GAGNE"]
     perdants = [x for x in fermes if x.get("resultat") == "PERDU"]
-    
     total = len(fermes)
     taux_reussite = (len(gagnants) / total * 100) if total > 0 else 0
     pnl = solde - depart
-    gain_moyen = sum(x["gain_tp2"] for x in gagnants) / len(gagnants) if gagnants else 0
-    perte_moyenne = sum(x["risque"] for x in perdants) / len(perdants) if perdants else 0
-    total_gains = sum(x["gain_tp2"] for x in gagnants)
-    total_pertes = sum(x["risque"] for x in perdants)
-    facteur_profit = total_gains / total_pertes if total_pertes > 0 else 0
-    perte_max = 0
-    current = 0
-    for x in fermes:
-        if x.get("resultat") == "PERDU": current += x["risque"]; perte_max = max(perte_max, current)
-        else: current = 0
-    serie = "".join(["G" if x.get("resultat") == "GAGNE" else "P" for x in fermes[-10:]])
     
-    txt = f"\n\n📊 **STATISTIQUES DE TRADING**\n"
-    txt += f"━━━━━━━━━━━━━━━━━━━━━\n"
-    txt += f"💰 **COMPTE VIRTUEL**\n"
-    txt += f"• Solde actuel : {solde:.2f}$\n"
-    txt += f"• Solde de départ : {depart:.2f}$\n"
-    txt += f"• Gain/Perte : {pnl:+.2f}$ ({(pnl/depart*100):+.1f}%)\n"
-    txt += f"━━━━━━━━━━━━━━━━━━━━━\n"
-    txt += f"📈 **PERFORMANCE**\n"
-    txt += f"• Trades clôturés : {total}\n"
-    txt += f"• Gagnants : {len(gagnants)} | Perdants : {len(perdants)}\n"
-    txt += f"• Taux de réussite : {taux_reussite:.0f}%\n"
-    txt += f"• Facteur de profit : {facteur_profit:.2f}\n"
-    txt += f"• Gain moyen : {gain_moyen:.2f}$\n"
-    txt += f"• Perte moyenne : {perte_moyenne:.2f}$\n"
-    txt += f"• Perte maximale : {perte_max:.2f}$\n"
-    txt += f"• Série récente (10 derniers) : {serie if serie else 'Aucun'}\n"
-    txt += f"━━━━━━━━━━━━━━━━━━━━━\n"
+    txt = f"\n\n📊 **STATISTIQUES DE TRADING**\n━━━━━━━━━━━━━━━━━━━━━\n💰 **COMPTE VIRTUEL**\n"
+    txt += f"• Solde actuel : {solde:.2f}$\n• Solde de départ : {depart:.2f}$\n• Gain/Perte : {pnl:+.2f}$ ({(pnl/depart*100):+.1f}%)\n"
+    txt += f"━━━━━━━━━━━━━━━━━━━━━\n📈 **PERFORMANCE**\n• Trades clôturés : {total}\n"
+    txt += f"• Gagnants : {len(gagnants)} | Perdants : {len(perdants)}\n• Taux de réussite : {taux_reussite:.0f}%\n"
     
     en_cours = [x for x in t if x["statut"] == "EN COURS"]
     if en_cours:
         d = en_cours[-1]
-        txt += f"🔹 **TRADE EN COURS**\n"
-        txt += f"• Sens : {d['sens']}\n"
-        txt += f"• Entrée : {d['entree']:.5f}\n"
-        txt += f"• SL : {d['sl']:.5f}\n"
+        txt += f"\n🔹 **TRADE EN COURS**\n• Sens : {d['sens']}\n• Entrée : {d['entree']:.5f}\n• SL : {d['sl']:.5f}\n"
         txt += f"• TP1 : {d['tp1']:.5f} {'✅ Touché' if d['tp1_touche'] else '⏳ En attente'}\n"
         txt += f"• TP2 : {d['tp2']:.5f} ⏳ En attente\n"
-        if d['tp1_touche']: txt += f"• Break-Even : ✅ SL remonté à {d['sl']:.5f}\n"
     else:
-        txt += f"🔹 Aucun trade en cours. En attente d'un signal.\n"
+        txt += f"\n🔹 Aucun trade en cours. En attente d'un signal.\n"
     return txt
 
 def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
@@ -292,46 +251,22 @@ def analyser(pair_key, source, now):
         if aligne and ob_type:
             sig = check_cassure_ob(df_15, ob_type, ob_bas, ob_haut, tend_h1)
         
-        log(f"{pair_key} analysé. H1:{tend_h1} M30:{tend_m30} OB:{ob_type} Signal: {sig}")
-        
         if sig and not any(x["statut"] == "EN COURS" for x in JOURNAL["trades"]):
             atr = (df_15["h"] - df_15["l"]).rolling(14).mean().iloc[-1]
             ouvrir_trade(sig, df_15["c"].iloc[-1], atr, len(df_15)-1, now, pair_key)
         
-        # Vérifier si un trade vient d'être fermé (pour le mode EVENEMENT)
-        trade_ferme_recemment = False
-        if not any(x["statut"] == "EN COURS" for x in JOURNAL["trades"]) and len(JOURNAL["trades"]) > 0:
-            dernier_trade = JOURNAL["trades"][-1]
-            if dernier_trade.get("resultat") in ("GAGNE", "PERDU"):
-                try:
-                    date_trade = datetime.fromisoformat(dernier_trade["date"])
-                    if (now - date_trade) < timedelta(minutes=20):
-                        trade_ferme_recemment = True
-                except: pass
-        
         mode = CONFIG.get("mode_notification", "EVENEMENT")
-        doit_envoyer = False
-        
-        if mode == "RAPPORT":
-            doit_envoyer = True
-        elif mode == "SIGNAL":
-            doit_envoyer = (sig is not None)
-        elif mode == "EVENEMENT":
-            doit_envoyer = (sig is not None) or trade_ferme_recemment
+        doit_envoyer = (mode == "RAPPORT") or (mode == "SIGNAL" and sig) or (mode == "EVENEMENT" and sig)
         
         if doit_envoyer:
             texte = f"📊 **RAPPORT S/R {pair_key}** - {now.strftime('%a %d/%m %H:%M')}\n\n"
-            texte += f"🔹 **TENDANCE**\n• H1 : {tend_h1}\n• M30 : {tend_m30}\n"
-            texte += f"• Alignement : {'✅ OUI' if aligne else '❌ NON'}\n\n"
+            texte += f"🔹 **TENDANCE**\n• H1 : {tend_h1}\n• M30 : {tend_m30}\n• Alignement : {'✅ OUI' if aligne else '❌ NON'}\n\n"
             if ob_type:
                 texte += f"📏 **ORDER BLOCK**\n• Type : {ob_type}\n• Zone : {ob_bas:.5f} - {ob_haut:.5f}\n\n"
             
             en_cours = [x for x in JOURNAL["trades"] if x["statut"] == "EN COURS"]
-            if sig:
-                # Générer le ticket MetaTrader pour le nouveau trade
-                if en_cours:
-                    texte += generer_ticket_metatrader(en_cours[-1], pair_key)
-                    texte += "\n\n"
+            if sig and en_cours:
+                texte += generer_ticket_metatrader(en_cours[-1], pair_key) + "\n\n"
             
             texte += generer_rapport_professionnel()
             
@@ -340,8 +275,7 @@ def analyser(pair_key, source, now):
                 img = figure(df, tend, sig if tf == "M15" else None, tf, pair_key, ob_type, ob_bas, ob_haut)
                 post_ntfy(topic, f"{pair_key} - {tf}", img, f"{pair_key} {tf}")
                 time.sleep(1.5)
-            post_ntfy(topic, texte, None, f"Rapport OB {pair_key}")
-            log(f"Envoyé à Admin pour {pair_key} (mode: {mode})")
+            post_ntfy(topic, texte, None, f"Rapport S/R {pair_key}")
     except Exception as e: log(f"Erreur {pair_key}: {e}")
 
 def main():
