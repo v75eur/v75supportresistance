@@ -11,7 +11,6 @@ CONFIG = json.load(open("config.json"))
 SMA_FAST, SMA_SLOW = 3, 25
 JOURNAL_FILE = "journal.json"
 
-# Initialisation du journal (créé automatiquement s'il n'existe pas)
 if not os.path.exists(JOURNAL_FILE):
     JOURNAL = {"trades": [], "solde": CONFIG["backtest"]["solde_depart"]}
     json.dump(JOURNAL, open(JOURNAL_FILE, "w"))
@@ -271,10 +270,12 @@ def analyser(pair_key, source, now):
             texte += generer_rapport_professionnel()
             
             topic = CONFIG["topics"]["principal"]
+            # ENVOI DES IMAGES D'ABORD
             for tf, df, tend in [("H1", df_60, tend_h1), ("M30", df_30, tend_m30), ("M15", df_15, tend_h1)]:
                 img = figure(df, tend, sig if tf == "M15" else None, tf, pair_key, ob_type, ob_bas, ob_haut)
                 post_ntfy(topic, f"{pair_key} - {tf}", img, f"{pair_key} {tf}")
                 time.sleep(1.5)
+            # TEXTE EN DERNIER
             post_ntfy(topic, texte, None, f"Rapport S/R {pair_key}")
     except Exception as e: log(f"Erreur {pair_key}: {e}")
 
