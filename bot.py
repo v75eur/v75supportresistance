@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
 BENIN = pytz.timezone('Africa/Porto-Novo')
 CONFIG = json.load(open("config.json"))
@@ -84,10 +85,31 @@ def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
     df = df.tail(50).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
     fig.patch.set_facecolor('#1e1e1e'); ax.set_facecolor('#1e1e1e')
+    
+    # Bougies
     for i, r in df.iterrows():
         col = '#26a69a' if r['c'] >= r['o'] else '#ef5350'
         ax.plot([i, i], [r['l'], r['h']], color=col, lw=1.2)
         ax.add_patch(Rectangle((i-0.3, min(r['o'], r['c'])), 0.6, abs(r['o']-r['c']), facecolor=col, edgecolor=col))
+    
+    # --- TRACÉ DU CANAL DE TENDANCE (Régression linéaire) ---
+    x = np.arange(len(df))
+    z = np.polyfit(x, df["c"], 1)
+    p = np.poly1d(z)
+    tendance_line = p(x)
+    
+    # Calcul des écarts par rapport à la ligne de tendance pour trouver les bornes du canal
+    ecart_haut = (df["h"] - tendance_line).max()
+    ecart_bas = (df["l"] - tendance_line).min()
+    
+    canal_haut = tendance_line + ecart_haut
+    canal_bas = tendance_line + ecart_bas
+    
+    ax.plot(x, canal_haut, color="red", alpha=0.6, lw=1.5, ls="-.", label="Canal Haut")
+    ax.plot(x, canal_bas, color="lime", alpha=0.6, lw=1.5, ls="-.", label="Canal Bas")
+    ax.plot(x, tendance_line, color="gray", alpha=0.5, lw=1, ls=":", label="Ligne de Tendance")
+
+    # --- TRACÉ DE L'ORDER BLOCK ---
     if ob_type == "BAISSIER":
         ax.axhspan(ob_bas, ob_haut, color='red', alpha=0.2, label="Order Block Baissier")
         ax.axhline(ob_bas, color="red", ls="--", lw=1.5)
@@ -96,6 +118,7 @@ def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
         ax.axhspan(ob_bas, ob_haut, color='lime', alpha=0.2, label="Order Block Haussier")
         ax.axhline(ob_bas, color="lime", ls="--", lw=1.5)
         ax.axhline(ob_haut, color="lime", ls="--", lw=1.5)
+        
     ax.set_title(f"{pair_name} - {tf_label} | {tend} | {sig or ''}", color="white")
     ax.tick_params(colors='white'); ax.grid(color='#333333', ls='--', alpha=0.5)
     ax.legend(loc="upper left", facecolor='#1e1e1e', labelcolor='white')
