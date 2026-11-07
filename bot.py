@@ -27,7 +27,9 @@ def post_ntfy(url, msg, img=None, title=None):
     if not url: return
     headers = {"Title": title or "V75 S/R"}
     if img:
-        headers["Message"] = msg; headers["Filename"] = "chart.png"
+        headers["Filename"] = "chart.png"
+        headers["Content-Type"] = "image/png"
+        headers["Message"] = msg
         requests.post(url, data=img, headers=headers, timeout=30)
     else:
         requests.post(url, data=msg.encode("utf-8"), headers=headers, timeout=15)
@@ -91,7 +93,6 @@ def verifier_trades(df_15):
     solde = JOURNAL["solde"]
     updated = False
     atr_actuel = (df_15["h"] - df_15["l"]).rolling(14).mean().iloc[-1]
-    
     for t in trades:
         if t["statut"] == "FERME": continue
         for i in range(t.get("idx_ouverture", 0) + 1, len(df_15)):
@@ -126,17 +127,14 @@ def ouvrir_trade(sens, prix, atr, idx, now, pair_key):
     sl_dist = atr * cfg["stop_loss_multiplier"]
     tp1_dist = sl_dist * cfg["tp1_multiplier"]
     tp2_dist = sl_dist * cfg["tp2_multiplier"]
-    
     mt = CONFIG["metatrader"]
     if pair_key == "EURUSD": spread = mt["spread_eurusd"]; valeur_pip = mt["valeur_pip_eurusd"]
     elif pair_key == "XAUUSD": spread = mt["spread_xauusd"]; valeur_pip = mt["valeur_pip_xauusd"]
     else: spread = mt["spread_r75"]; valeur_pip = mt["valeur_pip_r75"]
-        
     prix_entree = prix + spread if sens == "ACHAT" else prix - spread
     sl = prix_entree - sl_dist if sens == "ACHAT" else prix_entree + sl_dist
     tp1 = prix_entree + tp1_dist if sens == "ACHAT" else prix_entree - tp1_dist
     tp2 = prix_entree + tp2_dist if sens == "ACHAT" else prix_entree - tp2_dist
-    
     trade = {"date": str(now), "sens": sens, "entree": prix_entree, "sl": sl, "tp1": tp1, "tp2": tp2,
              "tp1_touche": False, "risque": abs(sl_dist * valeur_pip * 100),
              "gain_tp1": abs(tp1_dist * valeur_pip * 100), "gain_tp2": abs(tp2_dist * valeur_pip * 100),
@@ -150,14 +148,12 @@ def generer_ticket_metatrader(trade, pair_key):
     if pair_key == "EURUSD": valeur_pip = mt["valeur_pip_eurusd"]; div = 0.0001
     elif pair_key == "XAUUSD": valeur_pip = mt["valeur_pip_xauusd"]; div = 0.01
     else: valeur_pip = mt["valeur_pip_r75"]; div = 1.0
-    
     sl_pips = abs(trade["entree"] - trade["sl"]) / div
     tp1_pips = abs(trade["tp1"] - trade["entree"]) / div
     tp2_pips = abs(trade["tp2"] - trade["entree"]) / div
     risque = sl_pips * valeur_pip * 100
     gain_tp1 = tp1_pips * valeur_pip * 100
     gain_tp2 = tp2_pips * valeur_pip * 100
-    
     txt = f"🎯 **ORDRE À PASSER SUR MT5**\n━━━━━━━━━━━━━━━━━━━━━\n"
     txt += f"• Symbole : {pair_key}\n• Type : {'Achat (Buy)' if trade['sens'] == 'ACHAT' else 'Vente (Sell)'}\n"
     txt += f"• Volume : 0.01 lot\n• Entrée : {trade['entree']:.5f}\n"
@@ -175,12 +171,10 @@ def generer_rapport_professionnel():
     total = len(fermes)
     taux_reussite = (len(gagnants) / total * 100) if total > 0 else 0
     pnl = solde - depart
-    
     txt = f"\n\n📊 **STATISTIQUES DE TRADING**\n━━━━━━━━━━━━━━━━━━━━━\n💰 **COMPTE VIRTUEL**\n"
     txt += f"• Solde actuel : {solde:.2f}$\n• Solde de départ : {depart:.2f}$\n• Gain/Perte : {pnl:+.2f}$ ({(pnl/depart*100):+.1f}%)\n"
     txt += f"━━━━━━━━━━━━━━━━━━━━━\n📈 **PERFORMANCE**\n• Trades clôturés : {total}\n"
     txt += f"• Gagnants : {len(gagnants)} | Perdants : {len(perdants)}\n• Taux de réussite : {taux_reussite:.0f}%\n"
-    
     en_cours = [x for x in t if x["statut"] == "EN COURS"]
     if en_cours:
         d = en_cours[-1]
@@ -199,7 +193,6 @@ def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
         col = '#26a69a' if r['c'] >= r['o'] else '#ef5350'
         ax.plot([i, i], [r['l'], r['h']], color=col, lw=1.2)
         ax.add_patch(Rectangle((i-0.3, min(r['o'], r['c'])), 0.6, abs(r['o']-r['c']), facecolor=col, edgecolor=col))
-    
     if ob_type == "BAISSIER":
         ax.axhspan(ob_bas, ob_haut, color='red', alpha=0.2, label="Order Block Baissier")
         ax.axhline(ob_bas, color="red", ls="--", lw=1.5)
@@ -208,7 +201,6 @@ def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
         ax.axhspan(ob_bas, ob_haut, color='lime', alpha=0.2, label="Order Block Haussier")
         ax.axhline(ob_bas, color="lime", ls="--", lw=1.5)
         ax.axhline(ob_haut, color="lime", ls="--", lw=1.5)
-        
     if tf_label == "M15":
         en_cours = [x for x in JOURNAL["trades"] if x["statut"] == "EN COURS"]
         if en_cours:
@@ -217,7 +209,6 @@ def figure(df, tend, sig, tf_label, pair_name, ob_type, ob_bas, ob_haut):
             ax.axhline(t["sl"], color="red", ls="--", lw=1.5, label=f"SL {t['sl']:.5f}")
             ax.axhline(t["tp1"], color="lime", ls=":", lw=1.5, label=f"TP1 {t['tp1']:.5f}")
             ax.axhline(t["tp2"], color="green", ls=":", lw=1.5, label=f"TP2 {t['tp2']:.5f}")
-            
     ax.set_title(f"{pair_name} - {tf_label} | {tend} | {sig or ''}", color="white")
     ax.tick_params(colors='white'); ax.grid(color='#333333', ls='--', alpha=0.5)
     ax.legend(loc="upper left", facecolor='#1e1e1e', labelcolor='white')
@@ -235,47 +226,34 @@ def analyser(pair_key, source, now):
             df_15 = fetch_deriv(DERIV_SYMBOLS[pair_key], "15m")
             df_30 = fetch_deriv(DERIV_SYMBOLS[pair_key], "30m")
             df_60 = fetch_deriv(DERIV_SYMBOLS[pair_key], "60m")
-            
         if df_15 is None or df_30 is None or df_60 is None: return
-        
         verifier_trades(df_15)
-        
         tend_h1 = tendance(df_60)
         tend_m30 = tendance(df_30)
         aligne = (tend_h1 == tend_m30 and tend_h1 in ("HAUSSE", "BAISSE"))
-        
         ob_type, ob_bas, ob_haut = detecter_order_block(df_60)
-        
         sig = None
         if aligne and ob_type:
             sig = check_cassure_ob(df_15, ob_type, ob_bas, ob_haut, tend_h1)
-        
         if sig and not any(x["statut"] == "EN COURS" for x in JOURNAL["trades"]):
             atr = (df_15["h"] - df_15["l"]).rolling(14).mean().iloc[-1]
             ouvrir_trade(sig, df_15["c"].iloc[-1], atr, len(df_15)-1, now, pair_key)
-        
         mode = CONFIG.get("mode_notification", "EVENEMENT")
         doit_envoyer = (mode == "RAPPORT") or (mode == "SIGNAL" and sig) or (mode == "EVENEMENT" and sig)
-        
         if doit_envoyer:
             texte = f"📊 **RAPPORT S/R {pair_key}** - {now.strftime('%a %d/%m %H:%M')}\n\n"
             texte += f"🔹 **TENDANCE**\n• H1 : {tend_h1}\n• M30 : {tend_m30}\n• Alignement : {'✅ OUI' if aligne else '❌ NON'}\n\n"
             if ob_type:
                 texte += f"📏 **ORDER BLOCK**\n• Type : {ob_type}\n• Zone : {ob_bas:.5f} - {ob_haut:.5f}\n\n"
-            
             en_cours = [x for x in JOURNAL["trades"] if x["statut"] == "EN COURS"]
             if sig and en_cours:
                 texte += generer_ticket_metatrader(en_cours[-1], pair_key) + "\n\n"
-            
             texte += generer_rapport_professionnel()
-            
             topic = CONFIG["topics"]["principal"]
-            # ENVOI DES IMAGES D'ABORD
             for tf, df, tend in [("H1", df_60, tend_h1), ("M30", df_30, tend_m30), ("M15", df_15, tend_h1)]:
                 img = figure(df, tend, sig if tf == "M15" else None, tf, pair_key, ob_type, ob_bas, ob_haut)
                 post_ntfy(topic, f"{pair_key} - {tf}", img, f"{pair_key} {tf}")
                 time.sleep(1.5)
-            # TEXTE EN DERNIER
             post_ntfy(topic, texte, None, f"Rapport S/R {pair_key}")
     except Exception as e: log(f"Erreur {pair_key}: {e}")
 
