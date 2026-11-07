@@ -7,52 +7,35 @@
   "strategies": {
     "support_resistance": true
   },
+  "support_resistance": {
+    "pivot_lookback": 3,
+    "cluster_atr_mult": 0.3,
+    "min_touches": 2
+  },
+  "order_blocks": {
+    "swing_lookback": 3,
+    "impulse_atr_mult": 1.5,
+    "max_age_candles": 200,
+    "entry_mode": "retest"
+  },
   "marches": {
     "forex": {
       "actif": true,
       "paires": {
-        "XAUUSD": false,
-        "XAGUSD": false,
-        "EURUSD": false,
-        "GBPUSD": false,
-        "USDJPY": false,
-        "USDCHF": false,
-        "USDCAD": false,
-        "AUDUSD": false,
-        "NZDUSD": false,
-        "EURGBP": false,
-        "EURJPY": false,
-        "GBPJPY": false,
-        "AUDJPY": false,
-        "EURAUD": false,
-        "EURCHF": false,
-        "EURNZD": false,
-        "GBPCHF": false,
-        "GBPAUD": false,
-        "GBPNZD": false,
-        "AUDNZD": false,
-        "AUDCAD": false,
-        "AUDCHF": false,
-        "CADJPY": false,
-        "CHFJPY": false,
-        "NZDJPY": false,
-        "CADCHF": false,
-        "NZDCAD": false,
-        "NZDCHF": false
+        "XAUUSD": false, "XAGUSD": false, "EURUSD": false, "GBPUSD": false,
+        "USDJPY": false, "USDCHF": false, "USDCAD": false, "AUDUSD": false,
+        "NZDUSD": false, "EURGBP": false, "EURJPY": false, "GBPJPY": false,
+        "AUDJPY": false, "EURAUD": false, "EURCHF": false, "EURNZD": false,
+        "GBPCHF": false, "GBPAUD": false, "GBPNZD": false, "AUDNZD": false,
+        "AUDCAD": false, "AUDCHF": false, "CADJPY": false, "CHFJPY": false,
+        "NZDJPY": false, "CADCHF": false, "NZDCAD": false, "NZDCHF": false
       }
     },
     "deriv": {
       "actif": true,
       "indices": {
-        "R_10": false,
-        "R_25": false,
-        "R_50": false,
-        "R_75": true,
-        "R_100": false,
-        "CRASH_500": false,
-        "CRASH_1000": false,
-        "BOOM_500": false,
-        "BOOM_1000": false
+        "R_10": false, "R_25": false, "R_50": false, "R_75": true, "R_100": false,
+        "CRASH_500": false, "CRASH_1000": false, "BOOM_500": false, "BOOM_1000": false
       }
     }
   }
