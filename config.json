@@ -7,27 +7,6 @@
   "strategies": {
     "support_resistance": true
   },
-  "backtest": {
-    "solde_depart": 50.0,
-    "lot": 0.01,
-    "valeur_pip": 0.10
-  },
-  "parametres_risque": {
-    "stop_loss_multiplier": 2.0,
-    "tp1_multiplier": 1.5,
-    "tp2_multiplier": 3.0,
-    "break_even_active": true,
-    "trailing_stop_active": true,
-    "trailing_stop_distance": 1.5
-  },
-  "metatrader": {
-    "spread_eurusd": 0.0002,
-    "spread_xauusd": 0.30,
-    "spread_r75": 2.0,
-    "valeur_pip_eurusd": 0.10,
-    "valeur_pip_xauusd": 0.01,
-    "valeur_pip_r75": 1.00
-  },
   "marches": {
     "forex": {
       "actif": true,
